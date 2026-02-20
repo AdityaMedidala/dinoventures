@@ -4,5 +4,5 @@ sqlmodel==0.0.14
 psycopg2-binary==2.9.9
 alembic==1.12.1
 asyncpg==0.28.0
-sqlalchemy==1.4.49
+sqlalchemy==2.0.23
 pydantic==1.10.13
