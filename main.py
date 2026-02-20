@@ -1,97 +1,323 @@
-from fastapi import FastAPI, HTTPException, Depends
-from sqlmodel import Session, select
-from database import init_db, get_session
-from models import Wallet, LedgerEntry
-import uuid
 from contextlib import asynccontextmanager
+from typing import Optional
+import uuid
+import json
+import hashlib
+
+from fastapi import FastAPI, HTTPException, Depends, Header, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, select
+
+from database import init_db, get_session
+from models import Wallet, LedgerEntry, Idempotency, TransactionType, AssetType
 
 
-# This 'lifespan' tells the database to wake up when the app starts
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     init_db()
     yield
 
 
-# This is the 'app' variable that Docker was looking for!
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, title="Internal Wallet Service")
+
+SYSTEM_WALLET_ID = "SYSTEM_TREASURY"
+
+# --- REQUEST SCHEMA ---
+
+class TransactRequest(BaseModel):
+    user_id: str = Field(...)
+    amount: int = Field(gt=0, description="Positive integer amount")
+    transaction_type: TransactionType = Field(...)
+    asset_code: str = Field(min_length=1)
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "user_id": "user_123",
+                "amount": 100,
+                "transaction_type": "TOPUP",
+                "asset_code": "GOLD_COIN"
+            }
+        }
 
 
-# --- HELPER: SEED DATA (Run this once to create users) ---
-@app.post("/seed")
-def seed_data(session: Session = Depends(get_session)):
-    # Check if we already have a treasury
-    existing = session.exec(select(Wallet).where(Wallet.user_id == "SYSTEM_TREASURY")).first()
-    if not existing:
-        treasury = Wallet(user_id="SYSTEM_TREASURY", balance=1_000_000)
-        user1 = Wallet(user_id="user_123", balance=100)
-        user2 = Wallet(user_id="user_456", balance=50)
-        session.add(treasury)
-        session.add(user1)
-        session.add(user2)
-        session.commit()
-        return {"message": "Database seeded with Treasury, user_123, and user_456"}
-    return {"message": "Database was already seeded"}
+def _normalize_asset_code(code: str) -> str:
+    return code.strip().upper()
 
 
-# --- FEATURE 1: CHECK BALANCE ---
-@app.get("/balance/{user_id}")
-def get_balance(user_id: str, session: Session = Depends(get_session)):
-    wallet = session.exec(select(Wallet).where(Wallet.user_id == user_id)).first()
+def _normalize_asset_code_or_422(code: str) -> str:
+    normalized = _normalize_asset_code(code)
+    if not normalized:
+        raise HTTPException(422, "asset_code must not be blank")
+    return normalized
+
+
+def _request_hash(
+    user_id: str,
+    amount: int,
+    transaction_type: TransactionType,
+    asset_code: str,
+) -> str:
+    payload = {
+        "user_id": user_id,
+        "amount": amount,
+        "transaction_type": transaction_type.value,
+        "asset_code": asset_code,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+# --- ENDPOINTS ---
+@app.get("/health",
+    response_description="Service health status",
+    responses={
+        200: {
+            "description": "Healthy",
+            "content": {"application/json": {"example": {"status": "ok"}}}
+        }
+    }
+)
+def health():
+    return {"status": "ok"}
+
+
+def get_wallet_or_404(
+    session: Session,
+    user_id: str,
+    asset_code: str,
+) -> tuple[Wallet, AssetType]:
+    asset_code = _normalize_asset_code_or_422(asset_code)
+    asset = session.exec(
+        select(AssetType).where(AssetType.code == asset_code)
+    ).first()
+    if not asset:
+        raise HTTPException(404, "Asset type not found")
+
+    wallet = session.exec(
+        select(Wallet).where(
+            Wallet.user_id == user_id,
+            Wallet.asset_type_id == asset.id,
+        )
+    ).first()
     if not wallet:
-        raise HTTPException(404, "User not found")
-    return {"user_id": user_id, "balance": wallet.balance, "currency": wallet.currency}
+        raise HTTPException(404, "Wallet not found for user/asset")
 
+    return wallet, asset
 
-# --- FEATURE 2: TRANSACTION (The Hard Part) ---
-@app.post("/transact")
-def transact(
-        user_id: str,
-        amount: int,
-        type: str,
-        session: Session = Depends(get_session)
+@app.get(
+    "/balance/{user_id}",
+    response_description="Current balance for the user and asset",
+    responses={
+        404: {"description": "Asset type or wallet not found"},
+        422: {"description": "Validation error (invalid asset_code)"},
+    }
+)
+def get_balance(
+    user_id: str,
+    asset_code: str = Query(..., min_length=1),
+    session: Session = Depends(get_session),
 ):
-    try:
-        # 1. LOCKING: We lock the wallet row so no one else can touch it
-        # until we are done. This prevents the "Race Condition".
-        user_wallet = session.exec(
-            select(Wallet).where(Wallet.user_id == user_id).with_for_update()
-        ).first()
+    wallet, asset = get_wallet_or_404(session, user_id, asset_code)
+    return {
+        "user_id": user_id,
+        "balance": wallet.balance,
+        "asset_type_id": wallet.asset_type_id,
+        "asset_code": asset.code,
+    }
 
+
+@app.get(
+    "/transactions/{user_id}",
+    response_description="Full transaction history for the user and asset",
+    responses={
+        404: {"description": "Asset type or wallet not found"},
+        422: {"description": "Validation error (invalid asset_code)"},
+    }
+)
+def get_transactions(
+    user_id: str,
+    asset_code: str = Query(..., min_length=1),
+    session: Session = Depends(get_session),
+):
+    wallet, asset = get_wallet_or_404(session, user_id, asset_code)
+
+    entries = session.exec(
+        select(LedgerEntry)
+        .where(LedgerEntry.wallet_id == wallet.id)
+        .order_by(LedgerEntry.created_at.desc())
+    ).all()
+
+    return {
+        "user_id": user_id,
+        "asset_code": asset.code,
+        "asset_type_id": asset.id,
+        "current_balance": wallet.balance,
+        "transactions": [
+            {
+                "transaction_id": e.transaction_id,
+                "amount": e.amount,
+                "type": e.reason,
+                "created_at": e.created_at,
+            }
+            for e in entries
+        ],
+    }
+
+
+@app.post(
+    "/transact",
+    response_description="Transaction completed successfully",
+    responses={
+        400: {"description": "Insufficient funds or invalid request"},
+        404: {"description": "Asset type or wallet not found"},
+        409: {"description": "Idempotency key mismatch"},
+        422: {"description": "Validation error"},
+    }
+)
+
+def transact(
+    body: TransactRequest,
+    session: Session = Depends(get_session),
+    idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+):
+    if not idempotency_key:
+        raise HTTPException(400, "Missing Idempotency-Key header")
+
+    if body.user_id == SYSTEM_WALLET_ID:
+        raise HTTPException(400, "SYSTEM_TREASURY is reserved")
+
+    asset_code = _normalize_asset_code_or_422(body.asset_code)
+    request_hash = _request_hash(
+        user_id=body.user_id,
+        amount=body.amount,
+        transaction_type=body.transaction_type,
+        asset_code=asset_code,
+    )
+
+    # Return cached response immediately if this key was already processed
+    existing_idem = session.exec(
+        select(Idempotency).where(
+            Idempotency.key == idempotency_key,
+            Idempotency.user_id == body.user_id,
+        )
+    ).first()
+    if existing_idem:
+        if existing_idem.request_hash != request_hash:
+            raise HTTPException(409, "Idempotency-Key already used with different request")
+        return json.loads(existing_idem.response_payload)
+
+    try:
+        # --- DEADLOCK AVOIDANCE ---
+        # Always acquire row locks in ascending wallet ID order.
+        # This guarantees a consistent lock ordering across all concurrent
+        # requests, preventing the cyclic-wait condition that causes deadlocks.
+        asset = session.exec(select(AssetType).where(AssetType.code == asset_code)).first()
+        if not asset:
+            raise HTTPException(404, "Asset type not found")
+
+        user_wallet = session.exec(
+            select(Wallet).where(
+                Wallet.user_id == body.user_id,
+                Wallet.asset_type_id == asset.id,
+            )
+        ).first()
         system_wallet = session.exec(
-            select(Wallet).where(Wallet.user_id == "SYSTEM_TREASURY").with_for_update()
+            select(Wallet).where(
+                Wallet.user_id == SYSTEM_WALLET_ID,
+                Wallet.asset_type_id == asset.id,
+            )
         ).first()
 
         if not user_wallet or not system_wallet:
-            raise HTTPException(404, "Wallet not found. Did you run /seed?")
+            raise HTTPException(404, "Wallet not found for user/asset. Did you run /seed?")
 
-        # 2. LOGIC: Check Balance (Don't let them go negative)
-        if amount < 0 and (user_wallet.balance + amount < 0):
-            raise HTTPException(400, "Insufficient Funds")
+        # Lock in consistent ID order to prevent deadlocks
+        lock_first_id = min(user_wallet.id, system_wallet.id)
+        lock_second_id = max(user_wallet.id, system_wallet.id)
 
-        # 3. LEDGER: Double Entry Bookkeeping
+        session.exec(select(Wallet).where(Wallet.id == lock_first_id).with_for_update()).first()
+        session.exec(select(Wallet).where(Wallet.id == lock_second_id).with_for_update()).first()
+
+        # Re-fetch after locking to get the freshest state
+        user_wallet = session.exec(
+            select(Wallet).where(
+                Wallet.user_id == body.user_id,
+                Wallet.asset_type_id == asset.id,
+            ).with_for_update()
+        ).first()
+        system_wallet = session.exec(
+            select(Wallet).where(
+                Wallet.user_id == SYSTEM_WALLET_ID,
+                Wallet.asset_type_id == asset.id,
+            ).with_for_update()
+        ).first()
+
+        # --- DIRECTION: amount is always positive; SPEND debits the user ---
+        user_delta = -body.amount if body.transaction_type == TransactionType.SPEND else body.amount
+        system_delta = -user_delta  # Mirror: double-entry bookkeeping
+
+        # --- BALANCE CHECK ---
+        if user_wallet.balance + user_delta < 0:
+            raise HTTPException(400, "Insufficient funds")
+
+        # --- DOUBLE-ENTRY LEDGER ---
         tx_id = str(uuid.uuid4())
 
-        # Entry 1: The User's Side
         session.add(LedgerEntry(
-            transaction_id=tx_id, wallet_id=user_wallet.id, amount=amount, reason=type
+            transaction_id=tx_id,
+            wallet_id=user_wallet.id,
+            amount=user_delta,
+            reason=body.transaction_type.value,
         ))
-        user_wallet.balance += amount
+        session.add(LedgerEntry(
+            transaction_id=tx_id,
+            wallet_id=system_wallet.id,
+            amount=system_delta,
+            reason=body.transaction_type.value,
+        ))
 
-        # Entry 2: The System's Side (Mirror the transaction)
-        session.add(LedgerEntry(
-            transaction_id=tx_id, wallet_id=system_wallet.id, amount=-amount, reason=type
-        ))
-        system_wallet.balance -= amount
+        user_wallet.balance += user_delta
+        system_wallet.balance += system_delta
 
         session.add(user_wallet)
         session.add(system_wallet)
 
-        # 4. COMMIT: Save everything at once
-        session.commit()
-        session.refresh(user_wallet)
-        return {"new_balance": user_wallet.balance, "tx_id": tx_id}
+        response = {
+            "tx_id": tx_id,
+            "user_id": body.user_id,
+            "transaction_type": body.transaction_type.value,
+            "amount": body.amount,
+            "new_balance": user_wallet.balance,
+            "asset_type_id": user_wallet.asset_type_id,
+            "asset_code": asset.code,
+        }
 
-    except Exception as e:
-        session.rollback()  # If anything fails, undo everything
-        raise e
+        session.add(Idempotency(
+            key=idempotency_key,
+            user_id=body.user_id,
+            request_hash=request_hash,
+            response_payload=json.dumps(response),
+        ))
+
+        session.commit()
+        return response
+
+    except IntegrityError:
+        # Race condition: two identical idempotency keys hit simultaneously.
+        # The one that lost the DB race rolls back and returns the winner's stored response.
+        session.rollback()
+        existing_idem = session.exec(
+            select(Idempotency).where(
+                Idempotency.key == idempotency_key,
+                Idempotency.user_id == body.user_id,
+            )
+        ).first()
+        if existing_idem:
+            if existing_idem.request_hash != request_hash:
+                raise HTTPException(409, "Idempotency-Key already used with different request")
+            return json.loads(existing_idem.response_payload)
+        raise
+
+    except Exception:
+        session.rollback()
+        raise

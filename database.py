@@ -3,12 +3,16 @@ from typing import Generator
 
 from sqlmodel import SQLModel, Session, create_engine
 
-from models import Wallet, LedgerEntry, Idempotency  # noqa: F401
+from models import Wallet, LedgerEntry, Idempotency, AssetType  # noqa: F401
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./wallet.db")
 
-engine = create_engine(DATABASE_URL, echo=False)
+connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args["check_same_thread"] = False
+
+engine = create_engine(DATABASE_URL, echo=False, connect_args=connect_args)
 
 
 def init_db() -> None:
