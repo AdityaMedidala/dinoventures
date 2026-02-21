@@ -108,7 +108,7 @@ Open: [http://localhost:8000/docs](http://localhost:8000/docs)
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python seed.py
+sh setup.sh
 uvicorn main:app --reload
 ```
 
