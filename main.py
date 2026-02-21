@@ -103,6 +103,15 @@ def get_wallet_or_404(
 
     return wallet, asset
 
+@app.get("/", include_in_schema=False)
+def root():
+    return {
+        "service": "Dino Wallet Service",
+        "status": "ok",
+        "docs": "https://dinoventures-production.up.railway.app/docs",
+        "health": "https://dinoventures-production.up.railway.app/health",
+        "github": "https://github.com/AdityaMedidala/dinoventures"
+    }
 @app.get(
     "/balance/{user_id}",
     response_description="Current balance for the user and asset",
