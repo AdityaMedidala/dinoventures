@@ -52,13 +52,13 @@ The core challenges:
 
 ```mermaid 
 flowchart LR
-    Client[Client<br/>(Swagger UI / API Client)]
-    API[FastAPI Wallet Service<br/>/transact · /balance]
-    Idem[Idempotency Check<br/>(Idempotency-Key)]
-    Tx[DB Transaction<br/>(SELECT FOR UPDATE)]
+    Client["Client\n(Swagger UI / API Client)"]
+    API["FastAPI Wallet Service\n/transact · /balance"]
+    Idem["Idempotency Check\n(Idempotency-Key)"]
+    Tx["DB Transaction\nSELECT FOR UPDATE"]
     DB[(PostgreSQL)]
-    Ledger[Ledger Entries]
-    Treasury[System Wallet<br/>(Treasury)]
+    Ledger["Ledger Entries"]
+    Treasury["System Wallet\n(Treasury)"]
 
     Client --> API
     API --> Idem
