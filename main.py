@@ -23,8 +23,7 @@ app = FastAPI(lifespan=lifespan, title="Internal Wallet Service")
 
 SYSTEM_WALLET_ID = "SYSTEM_TREASURY"
 
-# --- REQUEST SCHEMA ---
-
+#REQUEST SCHEMA
 class TransactRequest(BaseModel):
     user_id: str = Field(...)
     amount: int = Field(gt=0, description="Positive integer amount")
@@ -67,7 +66,7 @@ def _request_hash(
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
-# --- ENDPOINTS ---
+#ENDPOINTS
 @app.get("/health",
     response_description="Service health status",
     responses={
@@ -207,10 +206,7 @@ def transact(
         return json.loads(existing_idem.response_payload)
 
     try:
-        # --- DEADLOCK AVOIDANCE ---
-        # Always acquire row locks in ascending wallet ID order.
-        # This guarantees a consistent lock ordering across all concurrent
-        # requests, preventing the cyclic-wait condition that causes deadlocks.
+        #DEADLOCK AVOIDANCE
         asset = session.exec(select(AssetType).where(AssetType.code == asset_code)).first()
         if not asset:
             raise HTTPException(404, "Asset type not found")
@@ -229,7 +225,7 @@ def transact(
         ).first()
 
         if not user_wallet or not system_wallet:
-            raise HTTPException(404, "Wallet not found for user/asset. Did you run /seed?")
+            raise HTTPException(404, "Wallet not found. Run 'python seed.py' or check the setup docs")
 
         # Lock in consistent ID order to prevent deadlocks
         lock_first_id = min(user_wallet.id, system_wallet.id)
@@ -238,7 +234,7 @@ def transact(
         session.exec(select(Wallet).where(Wallet.id == lock_first_id).with_for_update()).first()
         session.exec(select(Wallet).where(Wallet.id == lock_second_id).with_for_update()).first()
 
-        # Re-fetch after locking to get the freshest state
+        # Re-fetch after locking to get the most recent state
         user_wallet = session.exec(
             select(Wallet).where(
                 Wallet.user_id == body.user_id,
@@ -252,15 +248,15 @@ def transact(
             ).with_for_update()
         ).first()
 
-        # --- DIRECTION: amount is always positive; SPEND debits the user ---
+        #DIRECTION: amount is always positive; SPEND debits the user
         user_delta = -body.amount if body.transaction_type == TransactionType.SPEND else body.amount
         system_delta = -user_delta  # Mirror: double-entry bookkeeping
 
-        # --- BALANCE CHECK ---
+        #BALANCE CHECK
         if user_wallet.balance + user_delta < 0:
             raise HTTPException(400, "Insufficient funds")
 
-        # --- DOUBLE-ENTRY LEDGER ---
+        #DOUBLE-ENTRY LEDGER
         tx_id = str(uuid.uuid4())
 
         session.add(LedgerEntry(
@@ -303,8 +299,7 @@ def transact(
         return response
 
     except IntegrityError:
-        # Race condition: two identical idempotency keys hit simultaneously.
-        # The one that lost the DB race rolls back and returns the winner's stored response.
+        # RACE CONDITIONS: two identical idempotency keys hit simultaneously.
         session.rollback()
         existing_idem = session.exec(
             select(Idempotency).where(

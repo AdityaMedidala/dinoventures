@@ -71,7 +71,7 @@ def seed():
 
         session.commit()
 
-        # --- Load assets ---
+        #LOAD ASSETS
         assets_by_code = {
             asset.code: asset
             for asset in session.exec(select(AssetType)).all()
@@ -83,13 +83,13 @@ def seed():
 
         created = []
 
-        # --- Ensure system wallets ---
+        #SYSTEM WALLET
         for code, asset in assets_by_code.items():
             balance = SYSTEM_BALANCES.get(code, 1_000_000)
             if ensure_wallet(session, SYSTEM_WALLET_ID, asset, balance):
                 created.append(f"{SYSTEM_WALLET_ID}:{code}")
 
-        # --- Ensure user wallets ---
+        #USER WALLET
         for user_id, code, balance in USER_WALLETS:
             asset = assets_by_code.get(code)
             if not asset:
