@@ -27,7 +27,7 @@ SYSTEM_EQUITY_ID = "SYSTEM_EQUITY"
 #REQUEST SCHEMA
 class TransactRequest(BaseModel):
     user_id: str = Field(...)
-    amount: int = Field(gt=0, description="Positive integer amount")
+    amount: int = Field(gt=0, strict=True, description="Positive integer amount")
     transaction_type: TransactionType = Field(...)
     asset_code: str = Field(min_length=1)
 
@@ -245,19 +245,8 @@ def transact(
         session.exec(select(Wallet).where(Wallet.id == lock_second_id).with_for_update()).first()
 
         # Re-fetch after locking to get the most recent state
-        user_wallet = session.exec(
-            select(Wallet).where(
-                Wallet.user_id == body.user_id,
-                Wallet.asset_type_id == asset.id,
-            ).with_for_update()
-        ).first()
-        system_wallet = session.exec(
-            select(Wallet).where(
-                Wallet.user_id == SYSTEM_WALLET_ID,
-                Wallet.asset_type_id == asset.id,
-            ).with_for_update()
-        ).first()
-
+        session.refresh(user_wallet)
+        session.refresh(system_wallet)
         #DIRECTION: amount is always positive; SPEND debits the user
         user_delta = -body.amount if body.transaction_type == TransactionType.SPEND else body.amount
         system_delta = -user_delta  # Mirror: double-entry bookkeeping
