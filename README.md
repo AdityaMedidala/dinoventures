@@ -80,7 +80,7 @@ flowchart LR
 | Server    | Uvicorn + Gunicorn | Production-ready ASGI server              |
 | Hosting   | Railway            | Simple cloud deployment with managed PostgreSQL |
 
-The choice is **SQLModel**, which avoids schema differences by combining Pydantic models and SQLAlchemy into one definition.
+**SQLModel** was opted because avoids schema differences by combining Pydantic models and SQLAlchemy into one definition.
 
 ---
 
@@ -98,8 +98,7 @@ docker compose up --build
 
 Open: [http://localhost:8000/docs](http://localhost:8000/docs)
 
->Production deployment: [docker-compose.prod.yml](https://github.com/AdityaMedidala/dinoventures/blob/main/docker-compose.prod.yml) is also provided. It uses Gunicorn with multiple workers as a starting point for any deployment that needs a proper process manager.
-
+>Production deployment: [docker-compose.prod.yml](https://github.com/AdityaMedidala/dinoventures/blob/main/docker-compose.prod.yml) is also provided. The application runs with multiple Uvicorn worker processes, configurable via WEB_CONCURRENCY
 
 ---
 
@@ -151,7 +150,6 @@ Transaction types:
 Responses include `tx_id` and the updated balance.
 
 ---
-
 ## Concurrency Strategy
 
 The primary risk in a wallet system is the **lost update problem**:
