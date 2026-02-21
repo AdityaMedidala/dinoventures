@@ -27,7 +27,7 @@ Although the currency is virtual, the system treats it with the same rigor as re
 * [Ledger-Based Architecture](#ledger-based-architecture)
 * [Validation & Testing](#validation--testing)
 * [Load Testing](#load-testing)
-* [Limitations & Next Steps](#limitations--next-steps)
+* [Limitations](#limitations)
 
 ---
 
@@ -97,6 +97,9 @@ docker compose up --build
 ```
 
 Open: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+>Production deployment: [docker-compose.prod.yml](https://github.com/AdityaMedidala/dinoventures/blob/main/docker-compose.prod.yml) is also provided. It uses Gunicorn with multiple workers as a starting point for any deployment that needs a proper process manager.
+
 
 ---
 
@@ -221,7 +224,7 @@ Manual verification was performed using **FastAPI’s `/docs` UI**.
 
 ## Load Testing
 
-Also load-tested using **k6** against the live deployment.
+Also load-tested using k6 against the live deployment. The test script is included as [load_test.js](https://github.com/AdityaMedidala/dinoventures/blob/main/load_test.js) and can be run with k6 run load_test.js against any deployment-it ramps up to 50 concurrent virtual users with a mixed TOPUP/SPEND work targeting a single wallet to maximise contention.
 
 ### Test Profile
 
@@ -252,7 +255,7 @@ The interactive k6 load test report is available via GitHub Pages::[artifacts/lo
 ## Limitations
 
 * **No pagination on `/transactions`** – Paging for scale can be utilized
-* **No migration system wired** – Alembic is included and would be enabled before schema changes
+* **BONUS** Transaction type has no authorization guard-Out of scope for this service; authentication and role enforcement are assumed to be handled by an API gateway before the request reaches the wallet.
 * **Treasury can go negative** – This is intentional accounting behavior keeping mind real world behavior from apps like stripe
 
 ---
