@@ -187,7 +187,7 @@ Instead of mutating balances directly, the system uses a **double-entry ledger**
 Each transaction writes:
 
 * one ledger entry for the user wallet
-* one equal and opposite entry for the system treasury
+* one equal and opposite entry for the system treasury (and a system equity wallet is used for genesis seeding)
 
 Balances are a cached view; the ledger is the source of truth.
 
@@ -253,6 +253,8 @@ The interactive k6 load test report is available via GitHub Pages::[docs/load-te
 ## Limitations
 
 * **No pagination on `/transactions`** – Paging for scale can be utilized
+* **No DB-level check constraints** – The `balance >= 0` invariant is enforced in 
+  application code only; a direct database write could bypass it.
 * **BONUS** Transaction type has no authorization guard-Out of scope for this service; authentication and role enforcement are assumed to be handled by an API gateway before the request reaches the wallet.
 * **Treasury can go negative** – This is intentional accounting behavior keeping mind real world behavior from apps like stripe
 

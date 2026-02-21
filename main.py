@@ -22,6 +22,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(lifespan=lifespan, title="Internal Wallet Service")
 
 SYSTEM_WALLET_ID = "SYSTEM_TREASURY"
+SYSTEM_EQUITY_ID = "SYSTEM_EQUITY"
 
 #REQUEST SCHEMA
 class TransactRequest(BaseModel):
@@ -191,8 +192,8 @@ def transact(
     if not idempotency_key:
         raise HTTPException(400, "Missing Idempotency-Key header")
 
-    if body.user_id == SYSTEM_WALLET_ID:
-        raise HTTPException(400, "SYSTEM_TREASURY is reserved")
+    if body.user_id in {SYSTEM_WALLET_ID, SYSTEM_EQUITY_ID}:
+        raise HTTPException(400, "System wallets are reserved")
 
     asset_code = _normalize_asset_code_or_422(body.asset_code)
     request_hash = _request_hash(
