@@ -114,6 +114,8 @@ uvicorn main:app --reload
 
 > ⚠️ SQLite ignores row-level locks. Docker + PostgreSQL is hence preferred and used to test concurrency behavior.
 
+[setup.sh](https://github.com/AdityaMedidala/dinoventures/blob/main/setup.sh) runs [seed.py](https://github.com/AdityaMedidala/dinoventures/blob/main/seed.py), which populates the database with three asset types (Gold Coins, Diamonds, Loyalty Points), two system wallets (Treasury and Equity), and two seeded users (user_123 and user_456) with initial balances. All seed operations are idempotent — running the script multiple times will not create duplicate data.
+
 ---
 
 ## API Overview
