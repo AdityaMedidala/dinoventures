@@ -1,4 +1,4 @@
-# 🦕 Dino Wallet Service
+# Dino Wallet Service
 
 A backend wallet service for managing **virtual, in-app credits** (Gold Coins, Diamonds, Loyalty Points) in a high-traffic system such as a gaming or loyalty platform.
 
@@ -10,6 +10,7 @@ Although the currency is virtual, the system treats it with the same rigor as re
 * retries never double-apply transactions
 
 🌐 **Live Deployment:** [https://dinoventures-production.up.railway.app](https://dinoventures-production.up.railway.app)
+
 📖 **Interactive API Docs:** [https://dinoventures-production.up.railway.app/docs](https://dinoventures-production.up.railway.app/docs)
 
 ---
@@ -17,6 +18,7 @@ Although the currency is virtual, the system treats it with the same rigor as re
 ## Table of Contents
 
 * [Problem Overview](#problem-overview)
+* [High Level Architecture](#high-level-architecture)
 * [Tech Choices & Rationale](#tech-choices--rationale)
 * [How to Run the Service](#how-to-run-the-service)
 * [API Overview](#api-overview)
@@ -46,7 +48,26 @@ The core challenges:
 * **Auditability:** reconstructing balances from history if needed
 
 ---
+## High-Level Architecture
 
+```mermaid 
+flowchart LR
+    Client[Client<br/>(Swagger UI / API Client)]
+    API[FastAPI Wallet Service<br/>/transact · /balance]
+    Idem[Idempotency Check<br/>(Idempotency-Key)]
+    Tx[DB Transaction<br/>(SELECT FOR UPDATE)]
+    DB[(PostgreSQL)]
+    Ledger[Ledger Entries]
+    Treasury[System Wallet<br/>(Treasury)]
+
+    Client --> API
+    API --> Idem
+    Idem --> Tx
+    Tx --> DB
+    DB --> Ledger
+    Ledger --> Treasury
+```
+---
 ## Tech Choices & Rationale
 
 | Layer     | Choice             | Why                                       |
@@ -189,10 +210,10 @@ All core behaviors were validated against the **live Railway deployment** which 
 * concurrent requests against the same wallet
 
 📸 *Swagger UI — successful transaction with Idempotency-Key*  
-![alt text](http://url/to/img.png)
+![alt text](https://github.com/AdityaMedidala/dinoventures/blob/main/screenshots/swagger-transact-success.png)
 
 📸 *Swagger UI — rejected request missing Idempotency-Key*
-![alt text](http://url/to/img.png)
+![alt text](https://github.com/AdityaMedidala/dinoventures/blob/main/screenshots/swagger-missing-idempotency.png)
 
 Manual verification was performed using **FastAPI’s `/docs` UI**.
 
@@ -224,7 +245,7 @@ Also load-tested using **k6** against the live deployment.
 Occasional slower requests (~2s max) observed under peak contention, which is expected given intentional locking for correctness.
 
 📄 **Load Test Report:**  
-A full interactive k6 report is included at: artifacts/load-test-report.html
+A full interactive k6 report is included at:[artifacts/load-test-report.html](https://github.com/AdityaMedidala/dinoventures/blob/main/artifacts/load-test-report.html)
 
 ---
 
