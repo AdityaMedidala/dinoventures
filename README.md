@@ -245,7 +245,7 @@ Also load-tested using **k6** against the live deployment.
 Occasional slower requests (~2s max) observed under peak contention, which is expected given intentional locking for correctness.
 
 📄 **Load Test Report:**  
-A full interactive k6 report is included at:[artifacts/load-test-report.html](https://github.com/AdityaMedidala/dinoventures/blob/main/artifacts/load-test-report.html)
+The interactive k6 load test report is available via GitHub Pages::[artifacts/load-test-report.html](https://adityamedidala.github.io/dinoventures/load-test-report.html)
 
 ---
 

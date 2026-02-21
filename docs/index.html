@@ -1,15 +1,56 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Load Test Reports</title>
-  </head>
-  <body>
-    <h1>Dino Wallet – Load Testing</h1>
-    <p>
-      <a href="load-test-report.html">
-        Open k6 Load Test Report
-      </a>
-    </p>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Dino Wallet – Load Test Report</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: #ffffff;
+      padding: 2rem 2.5rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      text-align: center;
+      max-width: 420px;
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 0.75rem;
+    }
+    p {
+      font-size: 0.95rem;
+      color: #475569;
+      margin-bottom: 1.5rem;
+    }
+    a {
+      display: inline-block;
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      background: #2563eb;
+      color: white;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    a:hover {
+      background: #1d4ed8;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Dino Wallet Service</h1>
+    <p>Interactive k6 load testing report</p>
+    <a href="load-test-report.html">Open Load Test Report</a>
+  </div>
+</body>
 </html>
